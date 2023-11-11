@@ -127,37 +127,3 @@ function Main {
 }
 
 Main
-
-Exit
-
-
-
-$children = Get-ChildItem
-Write-BrowserGui -Items $children -SelectedLine $selectedLine
-
-Do {
-	$key = [System.Console]::ReadKey()
-
-	switch($key.Key) {
-		UpArrow {
-			$selectedLine--
-			if ($selectedLine -lt 0) {
-				$selectedLine = $children.Length - 1
-			}
-		}
-		DownArrow {
-			$selectedLine++
-			if ($selectedLine -gt $children.Length - 1) {
-				$selectedLine = 0
-			}
-		}
-		Q {
-			$keepGoing = $false
-		}
-	}
-	
-	$children = Get-ChildItem
-	Write-BrowserGui -Items $children -SelectedLine $selectedLine
-} while ($keepGoing)
-
-clear
