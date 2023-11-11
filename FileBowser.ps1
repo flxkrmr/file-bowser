@@ -106,7 +106,7 @@ function Main {
 					$cursorLine = $files.Length - 1
 				}
 			}
-			DownArrow {
+			DownArrow, N {
 				$cursorLine++
 				if ($cursorLine -gt $files.Length - 1) {
 					$cursorLine = 0
