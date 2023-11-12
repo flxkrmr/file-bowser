@@ -9,14 +9,11 @@ class GuiLine {
 		$this.Formatter = "`e[0m"
 	}
 
-	#[string] Formatter() {
-	#	if ($this.Selected) {
-	#		#return "`e[31m"
-	#		return "`e[44m"
-	#	} else {
-	#		return "`e[0m"
-	#	}
-	#}
+	[void] Reset() {
+		$this.Text = ""
+		$this.Formatter = "`e[0m"
+		$this.Dirty = $true
+	}
 }
 
 class Gui {
@@ -68,7 +65,13 @@ class Gui {
 
 	[void] DrawLine([int]$LineIndex, [string]$Text, [string]$Formatter) {
 		$l = $LineIndex + 1
-		Write-Host "`e[$l;1H`e[K| $Formatter$Text`e[0m"
+		Write-Host "`e[$l;1H`e[K$Formatter$Text`e[0m"
+	}
+
+	[void] ResetAllLines() {
+		foreach ($line in $this.Lines) {
+			$line.Reset()
+		}
 	}
 }
 
@@ -106,92 +109,144 @@ class FileGuiLine {
 	}
 
 	[string] Text() {
-		if ($this.File.GetType() -eq [System.IO.DirectoryInfo]) {
-			return "$this.File.Name/"
+		if ($this.IsDirectory()) {
+			return $this.File.Name + "/"
 		} else {
 			return $this.File.Name	
 		}
 	}
+
+	[boolean] IsDirectory() {
+		return $this.File.GetType() -eq [System.IO.DirectoryInfo]
+	}
 }
 
 class FileGui {
-	[FileGuiLine[]]$Lines
+	[FileGuiLine[]]$FileLines
 	[Gui]$Gui
+	[int]$FileCursorLine
+	[string]$CurrentLocation
 
 	FileGui() {
 		$this.Gui = [Gui]::new()
 		$this.Gui.Draw()
+		$this.FileCursorLine = 0
 	}
 
 	[void] SetFiles([System.IO.FileSystemInfo[]]$Files) {
-		$this.Lines = foreach ($file in $Files) {
+		$this.FileLines = @()
+		$this.Gui.ResetAllLines()
+		
+		$this.FileLines = foreach ($file in $Files) {
 			$file = [FileGuiLine]::new($file)
 			Write-Output $file
 		}
 		
-		for ($i = 0; $i -lt $this.Lines.Length; $i++) {
-			$line = $this.Lines[$i]
-			$this.Gui.SetLine($i, $line.Text(), $line.Formatter())
+		for ($i = 0; $i -lt $this.FileLines.Length; $i++) {
+			$line = $this.FileLines[$i]
+			$this.Gui.SetLine($i+2, $line.Text(), $line.Formatter())
 		}
 
+		$this.SetFileLineSelected($this.FileCursorLine)
+
 		$this.Gui.ReDraw()
 	}
 
-	[void] SetLineSelected([int]$LineIndex) {
-		$line = $this.Lines[$LineIndex]
+	[void] SetFileLineSelected([int]$LineIndex) {
+		$line = $this.FileLines[$LineIndex]
 		$line.Selected = $true
-		$this.Gui.SetLine($LineIndex, $line.Text(), $line.Formatter())
-
-		$this.Gui.ReDraw()
+		$this.Gui.SetLine($LineIndex+2, $line.Text(), $line.Formatter())
 	}
 
-	[void] SetAllLinesDeselected() {
-		for ($i = 0; $i -lt $this.Lines.Length; $i++) {
-			$line = $this.Lines[$i]
+	[void] SetAllFileLinesDeselected() {
+		for ($i = 0; $i -lt $this.FileLines.Length; $i++) {
+			$line = $this.FileLines[$i]
 			if ($line.Selected) {
 				$line.Selected = $false
-				$this.Gui.SetLine($i, $line.Text(), $line.Formatter())
+				$this.Gui.SetLine($i+2, $line.Text(), $line.Formatter())
 			}
 		}
+	}
+
+	[void] IncFileCursorLine() {
+		$this.FileCursorLine++
+		if ($this.FileCursorLine -gt $this.FileLines.Length - 1) {
+			$this.FileCursorLine = 0
+		}
+
+		$this.SetAllFileLinesDeselected()
+		$this.SetFileLineSelected($this.FileCursorLine)
 
 		$this.Gui.ReDraw()
+	}
+
+	[void] DecFileCursorLine() {
+		$this.FileCursorLine--
+		if ($this.FileCursorLine -lt 0) {
+			$this.FileCursorLine = $this.FileLines.Length - 1
+		}
+
+		$this.SetAllFileLinesDeselected()
+		$this.SetFileLineSelected($this.FileCursorLine)
+
+		$this.Gui.ReDraw()
+	}
+
+	[void] DisplayCurrentDirectory() {
+		$files = Get-ChildItem
+		$this.SetFiles($files)
+		
+		$location = Get-Location
+		$this.CurrentLocation = $location.Path
+		
+		$this.Gui.SetLine(0, $this.CurrentLocation, "`e[32m")
+		
+		$this.Gui.ReDraw()
+	}
+
+	[void] ChangeDirectoryToCursor() {
+		$line = $this.FileLines[$this.FileCursorLine]
+		if ($line.IsDirectory()) {
+			Set-Location -Path $line.File.Name
+			$this.DisplayCurrentDirectory()
+		} else {
+			# TODO warning sound
+			#Write-Host "`a`r"
+		}
+	}
+
+	[void] ChangeDirectoryToTop() {
+		Set-Location -Path ..
+		$this.DisplayCurrentDirectory()
 	}
 }
 
 function Main {
 	$gui = [FileGui]::new()
 
-	$files = Get-ChildItem
-	$gui.SetFiles($files)
+	$gui.DisplayCurrentDirectory()
 
-	
-	$cursorLine = 0
-	$gui.SetLineSelected($cursorLine)
-	
 	$keepGoing = $true
 	Do {
 		$key = [System.Console]::ReadKey()
 
 		switch($key.Key) {
 			UpArrow {
-				$cursorLine--
-				if ($cursorLine -lt 0) {
-					$cursorLine = $files.Length - 1
-				}
+				$gui.DecFileCursorLine()
 			}
 			DownArrow {
-				$cursorLine++
-				if ($cursorLine -gt $files.Length - 1) {
-					$cursorLine = 0
-				}
+				$gui.IncFileCursorLine()
+			}
+			Spacebar {
+				$gui.ChangeDirectoryToCursor()
+			}
+			Backspace {
+				$gui.ChangeDirectoryToTop()
 			}
 			Q {
 				$keepGoing = $false
 			}
 		}
-	
-		$gui.SetAllLinesDeselected()
-		$gui.SetLineSelected($cursorLine)
 	} while ($keepGoing)
 
 	clear
