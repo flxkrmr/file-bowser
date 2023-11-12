@@ -33,12 +33,11 @@ class Gui {
 		}
     }
 
-	[void] SetLine([int]$LineIndex, [string]$Text) {
-		$this.Lines[$LineIndex].Text = $Text
-		$this.Lines[$LineIndex].Dirty = $true
-	}
-
 	[void] SetLine([int]$LineIndex, [string]$Text, [string]$Formatter) {
+		if ($LineIndex -gt ($this.Lines.Length - 1)) {
+			return
+		}
+
 		$this.Lines[$LineIndex].Text = $Text
 		$this.Lines[$LineIndex].Formatter = $Formatter
 		$this.Lines[$LineIndex].Dirty = $true
@@ -46,6 +45,8 @@ class Gui {
 
 	[void] Draw() {
 		clear
+		# Hide cursor
+		Write-Host "`e[?25l"]`"
 		for ($i = 0; $i -lt $this.Lines.Length; $i++) {
 			$line = $this.Lines[$i]
 			$this.DrawLine($i, $line.Text, $line.Formatter)
@@ -66,6 +67,9 @@ class Gui {
 	[void] DrawLine([int]$LineIndex, [string]$Text, [string]$Formatter) {
 		$l = $LineIndex + 1
 		Write-Host "`e[$l;1H`e[K$Formatter$Text`e[0m"
+		# Reset cursor
+		$h = $this.Height
+		Write-Host "`e[$h;1H"
 	}
 
 	[void] ResetAllLines() {
@@ -94,7 +98,7 @@ class FileGuiLine {
 
 	[string] FormatterDirectory() {
 		if ($this.Selected) {
-			return "`e[33;45m"
+			return "`e[33;44m"
 		} else {
 			return "`e[33m"
 		}
@@ -102,7 +106,7 @@ class FileGuiLine {
 
 	[string] FormatterFile() {
 		if ($this.Selected) {
-			return "`e[45m"
+			return "`e[44m"
 		} else {
 			return "`e[0m"
 		}
@@ -136,6 +140,7 @@ class FileGui {
 	[void] SetFiles([System.IO.FileSystemInfo[]]$Files) {
 		$this.FileLines = @()
 		$this.Gui.ResetAllLines()
+		$this.FileCursorLine = 0
 		
 		$this.FileLines = foreach ($file in $Files) {
 			$file = [FileGuiLine]::new($file)
@@ -153,12 +158,20 @@ class FileGui {
 	}
 
 	[void] SetFileLineSelected([int]$LineIndex) {
+		if ($this.FileLines.Length -eq 0) {
+			return
+		}
+
 		$line = $this.FileLines[$LineIndex]
 		$line.Selected = $true
 		$this.Gui.SetLine($LineIndex+2, $line.Text(), $line.Formatter())
 	}
 
 	[void] SetAllFileLinesDeselected() {
+		if ($this.FileLines.Length -eq 0) {
+			return
+		}
+
 		for ($i = 0; $i -lt $this.FileLines.Length; $i++) {
 			$line = $this.FileLines[$i]
 			if ($line.Selected) {
@@ -169,6 +182,10 @@ class FileGui {
 	}
 
 	[void] IncFileCursorLine() {
+		if ($this.FileLines.Length -eq 0) {
+			return
+		}
+
 		$this.FileCursorLine++
 		if ($this.FileCursorLine -gt $this.FileLines.Length - 1) {
 			$this.FileCursorLine = 0
@@ -181,6 +198,10 @@ class FileGui {
 	}
 
 	[void] DecFileCursorLine() {
+		if ($this.FileLines.Length -eq 0) {
+			return
+		}
+
 		$this.FileCursorLine--
 		if ($this.FileCursorLine -lt 0) {
 			$this.FileCursorLine = $this.FileLines.Length - 1
@@ -205,6 +226,10 @@ class FileGui {
 	}
 
 	[void] ChangeDirectoryToCursor() {
+		if ($this.FileLines.Length -eq 0) {
+			return
+		}
+
 		$line = $this.FileLines[$this.FileCursorLine]
 		if ($line.IsDirectory()) {
 			Set-Location -Path $line.File.Name
@@ -231,16 +256,16 @@ function Main {
 		$key = [System.Console]::ReadKey()
 
 		switch($key.Key) {
-			UpArrow {
+			K {
 				$gui.DecFileCursorLine()
 			}
-			DownArrow {
+			J {
 				$gui.IncFileCursorLine()
 			}
-			Spacebar {
+			Enter {
 				$gui.ChangeDirectoryToCursor()
 			}
-			Backspace {
+			OemMinus {
 				$gui.ChangeDirectoryToTop()
 			}
 			Q {
