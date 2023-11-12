@@ -21,7 +21,7 @@ class Gui {
 	[int]$Height
 	[int]$Width
 
-    Gui() {
+	Gui() {
 		$windowSize = (Get-Host).UI.RawUI.MaxWindowSize
 
 		$this.Width = $windowSize.Width
@@ -31,7 +31,7 @@ class Gui {
 		for ($i = 0; $i -lt $this.Lines.Length; $i++) {
 			$this.Lines[$i] = [GuiLine]::new()
 		}
-    }
+	}
 
 	[void] SetLine([int]$LineIndex, [string]$Text, [string]$Formatter) {
 		if ($LineIndex -gt ($this.Lines.Length - 1)) {
