@@ -2,21 +2,21 @@ class GuiLine {
 	[bool]$Dirty
 	
 	[string]$Text
-	[bool]$Selected
-
+	[string]$Formatter
+	
 	GuiLine() {
-		$this.Selected = $false
 		$this.Dirty = $false
+		$this.Formatter = "`e[0m"
 	}
 
-	[string] Formatter() {
-		if ($this.Selected) {
-			#return "`e[31m"
-			return "`e[44m"
-		} else {
-			return "`e[0m"
-		}
-	}
+	#[string] Formatter() {
+	#	if ($this.Selected) {
+	#		#return "`e[31m"
+	#		return "`e[44m"
+	#	} else {
+	#		return "`e[0m"
+	#	}
+	#}
 }
 
 class Gui {
@@ -34,34 +34,24 @@ class Gui {
 		for ($i = 0; $i -lt $this.Lines.Length; $i++) {
 			$this.Lines[$i] = [GuiLine]::new()
 		}
-
-		$this.Lines[6].Selected = $true
     }
 
-	[void] SetLineText([int]$LineIndex, [string]$Text) {
+	[void] SetLine([int]$LineIndex, [string]$Text) {
 		$this.Lines[$LineIndex].Text = $Text
 		$this.Lines[$LineIndex].Dirty = $true
 	}
 
-	[void] SetLineSelected([int]$LineIndex) {
-		$this.Lines[$LineIndex].Selected = $true
+	[void] SetLine([int]$LineIndex, [string]$Text, [string]$Formatter) {
+		$this.Lines[$LineIndex].Text = $Text
+		$this.Lines[$LineIndex].Formatter = $Formatter
 		$this.Lines[$LineIndex].Dirty = $true
-	}
-	
-	[void] SetAllLinesDeselected() {
-		foreach ($line in $this.Lines) {
-			if ($line.Selected) {
-				$line.Selected = $false
-				$line.Dirty = $true
-			}
-		}
 	}
 
 	[void] Draw() {
 		clear
 		for ($i = 0; $i -lt $this.Lines.Length; $i++) {
 			$line = $this.Lines[$i]
-			$this.DrawLine($i, $line.Text, $line.Formatter())
+			$this.DrawLine($i, $line.Text, $line.Formatter)
 			$line.Dirty = $false
 		}
 	}
@@ -70,7 +60,7 @@ class Gui {
 		for ($i = 0; $i -lt $this.Lines.Length; $i++) {
 			$line = $this.Lines[$i]
 			if ($line.Dirty) {
-				$this.DrawLine($i, $line.Text, $line.Formatter())
+				$this.DrawLine($i, $line.Text, $line.Formatter)
 				$line.Dirty = $false
 			}
 		}
@@ -78,22 +68,105 @@ class Gui {
 
 	[void] DrawLine([int]$LineIndex, [string]$Text, [string]$Formatter) {
 		$l = $LineIndex + 1
-		Write-Host "`e[$l;1H`e[K|  $Formatter$Text`e[0m"
+		Write-Host "`e[$l;1H`e[K| $Formatter$Text`e[0m"
+	}
+}
+
+class FileGuiLine {
+	[System.IO.FileSystemInfo]$File
+	[bool]$Selected
+
+	FileGuiLine([System.IO.FileSystemInfo]$File) {
+		$this.File = $File
+		$this.Selected = $false
+	}
+
+	[string] Formatter() {
+		if ($this.File.GetType() -eq [System.IO.DirectoryInfo]) {
+			return $this.FormatterDirectory()
+		} else {
+			return $this.FormatterFile()
+		}
+	}
+
+	[string] FormatterDirectory() {
+		if ($this.Selected) {
+			return "`e[33;45m"
+		} else {
+			return "`e[33m"
+		}
+	}
+
+	[string] FormatterFile() {
+		if ($this.Selected) {
+			return "`e[45m"
+		} else {
+			return "`e[0m"
+		}
+	}
+
+	[string] Text() {
+		if ($this.File.GetType() -eq [System.IO.DirectoryInfo]) {
+			return "$this.File.Name/"
+		} else {
+			return $this.File.Name	
+		}
+	}
+}
+
+class FileGui {
+	[FileGuiLine[]]$Lines
+	[Gui]$Gui
+
+	FileGui() {
+		$this.Gui = [Gui]::new()
+		$this.Gui.Draw()
+	}
+
+	[void] SetFiles([System.IO.FileSystemInfo[]]$Files) {
+		$this.Lines = foreach ($file in $Files) {
+			$file = [FileGuiLine]::new($file)
+			Write-Output $file
+		}
+		
+		for ($i = 0; $i -lt $this.Lines.Length; $i++) {
+			$line = $this.Lines[$i]
+			$this.Gui.SetLine($i, $line.Text(), $line.Formatter())
+		}
+
+		$this.Gui.ReDraw()
+	}
+
+	[void] SetLineSelected([int]$LineIndex) {
+		$line = $this.Lines[$LineIndex]
+		$line.Selected = $true
+		$this.Gui.SetLine($LineIndex, $line.Text(), $line.Formatter())
+
+		$this.Gui.ReDraw()
+	}
+
+	[void] SetAllLinesDeselected() {
+		for ($i = 0; $i -lt $this.Lines.Length; $i++) {
+			$line = $this.Lines[$i]
+			if ($line.Selected) {
+				$line.Selected = $false
+				$this.Gui.SetLine($i, $line.Text(), $line.Formatter())
+			}
+		}
+
+		$this.Gui.ReDraw()
 	}
 }
 
 function Main {
-	$gui = [Gui]::new()
+	$gui = [FileGui]::new()
 
 	$files = Get-ChildItem
-	for ($i = 0; $i -lt $files.Length; $i++) {
-		$gui.SetLineText($i, $files[$i].Name)
-	}
+	$gui.SetFiles($files)
+
 	
 	$cursorLine = 0
 	$gui.SetLineSelected($cursorLine)
-	
-	$gui.Draw()
 	
 	$keepGoing = $true
 	Do {
@@ -106,7 +179,7 @@ function Main {
 					$cursorLine = $files.Length - 1
 				}
 			}
-			DownArrow, N {
+			DownArrow {
 				$cursorLine++
 				if ($cursorLine -gt $files.Length - 1) {
 					$cursorLine = 0
@@ -119,8 +192,6 @@ function Main {
 	
 		$gui.SetAllLinesDeselected()
 		$gui.SetLineSelected($cursorLine)
-
-		$gui.ReDraw()
 	} while ($keepGoing)
 
 	clear
